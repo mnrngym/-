@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>宗教相性診断フォーム</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { font-size: 2em; font-weight: bold; margin-bottom: 10px; }
+    .question { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 5px; }
+    select { padding: 5px; font-size: 1em; }
+    #progress { margin: 20px 0; }
+    #result { margin-top: 30px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>宗教相性診断フォーム</h1>
+  <div class="question">
+    <label for="nickname">こちらにお名前やニックネームなどを記入してください</label>
+    <input type="text" id="nickname" name="nickname" style="width:300px; padding:5px;">
+  </div>
+
+  <form id="quizForm">
+    <div id="questions"></div>
+    <div id="progress"></div>
+    <button type="button" onclick="calculateResult()">診断する</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script>
+    const questions = [
+      "宇宙は偶然ではなく、何らかの意志（神や法則）によって創造されたと思う。",
+      "世界には人間の理解を超えた秩序が存在すると思う。",
+      "善と悪は時代や文化を超えて存在すると思う。",
+      "宇宙や自然は、単なる物質ではなく『生きている』ような存在だと思う。",
+      "物事は偶然ではなく必然的に起こることが多いと思う。",
+      "すべての出来事には意味があると思う。",
+      "宇宙には見えない力やエネルギーが働いていると思う。",
+      "この世界はどこかで『完全性』を持つと思う。",
+      "宇宙には始まりと終わりがあると思う。",
+      "人間は自然と一体であるべきだと思う。",
+      "神（または神に相当する存在）が存在すると信じている。",
+      "神は人格を持ち、善悪を判断していると思う。",
+      "世界には唯一の神がいると思う。",
+      "複数の神や霊的存在がいると思う。",
+      "神は人間の祈りに応えると思う。",
+      "神は世界の出来事に関与していると思う。",
+      "神や仏は人間の心の中に存在すると考える。",
+      "神聖な存在は普遍的に人間に働きかけていると思う。",
+      "神の存在を否定することはできないと思う。",
+      "死後に天国・地獄などの行き先があると思う。",
+      "人は死後に別の肉体に生まれ変わる（輪廻）と思う。",
+      "死後は個としての意識はなくなり、全体に溶けると思う。",
+      "死後の世界は存在しないと思う。",
+      "死者の魂と生者は交流できると思う。",
+      "祖先は死後も生者を見守っていると思う。",
+      "死後は審判を受けると思う。",
+      "人生にはあらかじめ意味や使命が与えられていると思う。",
+      "人生の目的は徳を積むことだと思う。",
+      "人生の目的は悟りや解脱のような境地に到達することだと思う。",
+      "人生の目的は愛や慈悲を実践することだと思う。",
+      "人生の目的は自由に生きることだと思う。",
+      "人間は本来、不完全で罪深い存在だと思う。",
+      "人間は努力次第で成長し、完成に近づけると思う。",
+      "人生は苦しみであり、それを超える道を探すべきだと思う。",
+      "人生は楽しむためにあると思う。",
+      "定期的な儀式や礼拝に参加することを大切に思う。",
+      "瞑想や内省による精神修養を重視する。",
+      "他者への奉仕や慈善を重視する。",
+      "戒律や規則を守ることを重視する。",
+      "断食や精進のような修行を大切だと思う。",
+      "祭りや季節の行事を大切に思う。",
+      "自然や祖霊を祀ることを大切に思う。",
+      "芸術や音楽を通して神聖さを表現できると思う。",
+      "祈りの言葉やマントラに霊的力があると思う。",
+      "共同体の秩序や礼儀を大切に思う。",
+      "個人の自由な信仰形態を尊重すべきだと思う。",
+      "科学と宗教は両立できると思う。"
+    ];
+
+    const options = ["はい", "どちらでもない", "いいえ"];
+
+    const qContainer = document.getElementById("questions");
+    questions.forEach((q, i) => {
+      const div = document.createElement("div");
+      div.className = "question";
+      const label = document.createElement("label");
+      label.textContent = (i+1) + ". " + q;
+      const select = document.createElement("select");
+      select.name = "q" + (i+1);
+      options.forEach(opt => {
+        const option = document.createElement("option");
+        option.value = opt;
+        option.textContent = opt;
+        select.appendChild(option);
+      });
+      div.appendChild(label);
+      div.appendChild(select);
+      qContainer.appendChild(div);
+    });
+
+    function calculateResult() {
+      const answers = Array.from(document.querySelectorAll("select")).map(sel => sel.value);
+      let score = 0;
+      answers.forEach(ans => {
+        if(ans === "はい") score += 2;
+        else if(ans === "どちらでもない") score += 1;
+      });
+      document.getElementById("result").textContent = "合計スコア: " + score + " / " + (questions.length * 2);
+    }
+  </script>
+</body>
+</html>
