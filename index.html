@@ -1,52 +1,436 @@
-// 送信ボタン：メール送信 → サンクス画面
-document.getElementById('submitBtn').addEventListener('click', async ()=> {
-  // 送信内容の整形
-  const nickname = document.getElementById('nickname').value || '';
-  const answers = Object.fromEntries(Q.map(([id])=>[id-3, states.get(id) ?? null]));
-  const classified = classify();
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>宗教相性診断フォーム（50項目）</title>
+  <style>
+    :root{ --bg:#0b0f14; --card:#111720; --ink:#ecf1f8; --muted:#9fb1c7; --accent:#5cc8ff; --good:#44c060; --mid:#f0c54a; --bad:#e06666; }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; background:var(--bg); color:var(--ink)}
+    header{position:sticky; top:0; z-index:10; backdrop-filter:saturate(120%) blur(8px); background:linear-gradient(180deg, rgba(11,15,20,.9), rgba(11,15,20,.6)); border-bottom:1px solid #1d2633}
+    .wrap{max-width:980px; margin:0 auto; padding:16px}
+    h1{font-size:clamp(28px, 6vw, 40px); margin:8px 0 4px; font-weight:800}
+    p.lead{color:var(--muted); margin-top:4px}
+    .grid{display:grid; grid-template-columns:1fr; gap:12px}
+    @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
 
-  const lines = [];
-  lines.push(`名前/ニックネーム: ${nickname}`);
-  for (const [id, text] of Q) {
-    const v = states.get(id);
-    const label = v===2 ? 'はい' : v===1 ? 'どちらでもない' : v===0 ? 'いいえ' : '未回答';
-    lines.push(`${id - 3}. ${text} -> ${label}`);
-  }
-  const textBody = lines.join('\n');
+    .card{background:var(--card); border:1px solid #1d2633; border-radius:16px; padding:16px; box-shadow:0 6px 24px rgba(0,0,0,.25)}
+    .section-title{margin:0 0 12px; font-size:18px}
 
-  // 1) Formspree 等のエンドポイントが設定されていれば JSON でPOST
-  if (FORMSPREE_ENDPOINT) {
-    try {
-      const res = await fetch(FORMSPREE_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({
-          nickname,
-          mail_to: MAIL_TO,
-          answers,
-          classified,
-          raw_text: textBody
-        })
+    .q{padding:12px; border-radius:12px; border:1px solid #1d2633; background:#0f1621}
+    .q + .q{margin-top:8px}
+    .q h4{margin:0 0 10px; font-size:15px; line-height:1.45}
+
+    select.answer{width:100%; padding:10px 12px; border-radius:10px; border:1px solid #223049; background:#0f1621; color:var(--ink)}
+
+    .row{display:grid; grid-template-columns:220px 1fr; gap:8px; align-items:center}
+    .row + .row{margin-top:8px}
+    input[type="text"]{width:100%; padding:10px 12px; border-radius:10px; border:1px solid #223049; background:#0f1621; color:var(--ink)}
+
+    .actions{display:flex; gap:8px; flex-wrap:wrap}
+    .primary, .ghost{padding:12px 16px; border-radius:12px; border:1px solid #243246; background:#121a26; color:var(--ink); cursor:pointer}
+    .primary{border-color:var(--accent)}
+
+    .progress{height:10px; background:#0e141d; border-radius:999px; overflow:hidden; border:1px solid #1d2633}
+    .progress > div{height:100%; width:0%; background:linear-gradient(90deg, #3aa5ff, #5cc8ff); transition:width .2s ease}
+
+    .pill{display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border-radius:999px; border:1px solid #233146; background:#0f1621}
+    .pill b{font-weight:700}
+
+    .scorebar{height:12px; border-radius:6px; background:#0b111a; border:1px solid #1d2633; overflow:hidden}
+    .scorebar > span{display:block; height:100%; width:0}
+
+    .muted{color:var(--muted)}
+    .small{font-size:13px}
+    .result-badges{display:flex; gap:8px; flex-wrap:wrap}
+
+    /* thanks view */
+    #thanksView{display:none; min-height:100vh; background:#ffffff; color:#111;}
+    #thanksView .center{max-width:680px; margin:0 auto; padding:80px 16px; text-align:center}
+    #thanksView h1{font-size:28px; margin-bottom:8px}
+    #thanksView p{font-size:16px; margin:4px 0 24px}
+    #thanksView a{color:#e11d48; text-decoration:none; font-weight:600}
+    #thanksView .box{background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:40px; box-shadow:0 8px 24px rgba(0,0,0,.06)}
+  </style>
+</head>
+<body>
+  <header id="siteHeader">
+    <div class="wrap">
+      <h1><strong>宗教相性診断フォーム</strong></h1>
+      <p class="lead">あなたの世界観・死生観・信仰スタイルから、思想タイプの相性を推定します。※個人情報はブラウザ内で完結（保存は手動のみ）。</p>
+      <div class="progress" aria-label="回答進捗"><div id="progressbar"></div></div>
+    </div>
+  </header>
+
+  <main class="wrap" id="app">
+
+    <section class="card" id="namecard">
+      <div class="row">
+        <label for="nickname">こちらにお名前やニックネームなどを記入してください</label>
+        <input id="nickname" type="text" placeholder="例：ミノル / 匿名でも可" />
+      </div>
+    </section>
+
+    <section class="card" id="questions">
+      <h2 class="section-title">設問（全50問・プルダウンで選択）</h2>
+      <div class="grid" id="qgrid"></div>
+    </section>
+
+    <section class="card">
+      <div class="actions">
+        <button class="primary" id="calc">採点して結果を見る</button>
+        <button class="ghost" id="reset">回答をリセット</button>
+        <button class="ghost" id="export">結果をJSONで保存</button>
+        <button class="ghost" id="copy">回答をコピー</button>
+        <button class="primary" id="submitBtn">診断結果送信</button>
+      </div>
+      <p class="small muted">操作ヒント：各設問のプルダウンから「はい／どちらでもない／いいえ」を選んでください。</p>
+    </section>
+
+    <section class="card" id="result" hidden>
+      <h2 class="section-title">診断結果</h2>
+      <div id="summary"></div>
+      <div id="scores"></div>
+      <div id="suggest"></div>
+    </section>
+
+  </main>
+
+  <!-- Thanks View (Formspree風) -->
+  <div id="thanksView">
+    <div class="center">
+      <div class="box">
+        <h1>ありがとうございます！</h1>
+        <p>送信が無事に完了しました。</p>
+        <p><a id="backLink" href="#">サイトに戻る</a></p>
+      </div>
+      <p class="small" style="margin-top:18px; color:#6b7280">You are using <b>Form-like</b> page</p>
+    </div>
+  </div>
+
+  <footer class="wrap" id="siteFooter">
+    <p class="small muted">※この診断は世界観の整理に役立つツールです。最終判断はあなた自身と現場体験で行ってください。</p>
+  </footer>
+
+  <script>
+    // --- データ定義 ---------------------------------------------------------
+    const SECTIONS = [
+      { key:"w", title:"世界観・宇宙観", range:[4,13] },
+      { key:"g", title:"神・超越者", range:[14,23] },
+      { key:"a", title:"死後の世界・転生", range:[24,33] },
+      { key:"m", title:"人生の意味・目的", range:[34,43] },
+      { key:"p", title:"実践・信仰スタイル", range:[44,53] },
+    ];
+
+    // 質問本文（4〜53）
+    const Q = [
+      [4, "宇宙は偶然ではなく、何らかの意志（神や法則）によって創造されたと思う。"],
+      [5, "世界には人間の理解を超えた秩序が存在すると思う。"],
+      [6, "善と悪は時代や文化を超えて存在すると思う。"],
+      [7, "宇宙や自然は、単なる物質ではなく『生きている』ような存在だと思う。"],
+      [8, "物事は偶然ではなく必然的に起こることが多いと思う。"],
+      [9, "すべての出来事には意味があると思う。"],
+      [10, "自然や宇宙そのものが神聖だと思う。"],
+      [11, "宇宙は有限ではなく、永遠に続くと思う。"],
+      [12, "世界には見えないエネルギーや波動があると思う。"],
+      [13, "この世界は『試練の場』であり、人は成長するためにここにいると思う。"],
+      [14, "神（または神に相当する存在）は人格を持ち、意思や感情があると思う。"],
+      [15, "神は人間を愛しており、正しい道へ導こうとしていると思う。"],
+      [16, "神は唯一であり、他の神は存在しないと思う。"],
+      [17, "世界には複数の神や霊的存在がいると思う。"],
+      [18, "神は善悪を裁き、報いを与えると思う。"],
+      [19, "神や高次の存在は、祈りや儀式を通して人間と交流できると思う。"],
+      [20, "神は超越的存在であり、人間の姿や性質とは全く異なると思う。"],
+      [21, "神は人間の行動だけでなく心の内も見ていると思う。"],
+      [22, "神の意志は聖典や啓示によって人類に伝えられていると思う。"],
+      [23, "神は存在するが、人間の理解を超えていて定義できないと思う。"],
+      [24, "死後に天国や地獄のような行き先があると思う。"],
+      [25, "死後は生前の行いによって行き先が決まると思う。"],
+      [26, "人は死後に別の肉体に生まれ変わると思う。"],
+      [27, "輪廻転生は人間だけでなく動物や他の存在にも当てはまると思う。"],
+      [28, "死後は霊的な世界で家族や知人と再会できると思う。"],
+      [29, "死後は個としての意識は失われ、宇宙や全体に溶けると思う。"],
+      [30, "死後の世界は地上世界とは全く異なる次元にあると思う。"],
+      [31, "死後の行き先は自分で選べると思う。"],
+      [32, "死は終わりではなく、別の段階への移行だと思う。"],
+      [33, "死後の世界は存在しないと思う。"],
+      [34, "人生にはあらかじめ意味や使命が与えられていると思う。"],
+      [35, "人生の目的は徳や善行を積むことだと思う。"],
+      [36, "人生は神や宇宙から与えられた学びの場だと思う。"],
+      [37, "人生は苦しみと修行の連続であり、それを乗り越えることが重要だと思う。"],
+      [38, "人生の目的は悟りや解脱のような境地に到達することだと思う。"],
+      [39, "人生の目的は他者への奉仕や愛の実践だと思う。"],
+      [40, "人生は偶然の連続であり、特に意味はないと思う。"],
+      [41, "人生の価値は自分自身で作り出すものだと思う。"],
+      [42, "幸福は神や宇宙との調和の中にあると思う。"],
+      [43, "幸福は物質的な満足よりも精神的な充実によって得られると思う。"],
+      [44, "定期的な礼拝や儀式に参加することを大切に思う。"],
+      [45, "瞑想や内省による精神修養を重視する。"],
+      [46, "断食や戒律のような自己規律を重視する。"],
+      [47, "聖典や経典を学び、生活に生かすことを大切に思う。"],
+      [48, "他者への慈善や奉仕活動を信仰の一部だと思う。"],
+      [49, "特定の聖地や神聖な場所を訪れることを大切に思う。"],
+      [50, "音楽・歌・踊りなど芸術的表現を通じて神や宇宙とつながることができると思う。"],
+      [51, "精霊や先祖との交流（祭祀・祈り）を大切に思う。"],
+      [52, "宗教行事や祭りは共同体を維持するために重要だと思う。"],
+      [53, "個人的な祈りや瞑想だけで十分であり、組織や集団は不要だと思う。"],
+    ];
+
+    // --- UI生成（プルダウン） -------------------------------------------
+    const qgrid = document.getElementById('qgrid');
+    const states = new Map(); // qId -> 0/1/2
+
+    function makeQuestion([id, text]){
+      const wrap = document.createElement('div');
+      wrap.className = 'q';
+      wrap.dataset.id = id;
+      wrap.innerHTML = `<h4>${id - 3}. ${text}</h4>`; // 1〜50で表示
+
+      const sel = document.createElement('select');
+      sel.className = 'answer';
+      sel.innerHTML = `
+        <option value="" selected>選択してください</option>
+        <option value="2">はい</option>
+        <option value="1">どちらでもない</option>
+        <option value="0">いいえ</option>
+      `;
+      sel.addEventListener('change', ()=>{
+        if(sel.value === "") states.delete(id); else states.set(id, Number(sel.value));
+        updateProgress();
       });
-      if (res.ok) {
-        const base = location.origin + location.pathname;
-        location.href = base + '?thanks=1';
-        return;
-      }
-    } catch (e) {
-      // 失敗時は mailto にフォールバック
+      wrap.appendChild(sel);
+      return wrap;
     }
-  }
 
-  // 2) エンドポイント未設定 or 失敗時：ユーザーのメーラーを開く
-  const subject = encodeURIComponent('宗教相性診断フォーム 送信');
-  const body = encodeURIComponent(textBody + '\n\n(このメールはGitHub Pagesから送信)');
-  const mailto = `mailto:${encodeURIComponent(MAIL_TO)}?subject=${subject}&body=${body}`;
-  window.location.href = mailto;
+    function render(){
+      for(const sec of SECTIONS){
+        const col = document.createElement('div');
+        const card = document.createElement('div');
+        card.className='card';
+        const h = document.createElement('h3');
+        h.className='section-title';
+        h.textContent = `【${sec.title}】`;
+        card.appendChild(h);
+        for(const q of Q){
+          if(q[0] >= sec.range[0] && q[0] <= sec.range[1]) card.appendChild(makeQuestion(q));
+        }
+        col.appendChild(card);
+        qgrid.appendChild(col);
+      }
+    }
 
-  // メーラー起動後もサンクス画面を表示
-  setTimeout(()=>{
-    const base = location.origin + location.pathname;
-    location.href = base + '?thanks=1';
-  }, 500);
-});
+    render();
+
+    // --- 進捗 --------------------------------------------------------------
+    const progressbar = document.getElementById('progressbar');
+    function updateProgress(){
+      const answered = Array.from(states.keys()).length;
+      const pct = Math.round(answered/50*100);
+      progressbar.style.width = pct + '%';
+      progressbar.title = `回答済み: ${answered}/50`;
+    }
+
+    // --- 採点と分類（前回ロジックを流用） ---------------------------------
+    function sectionScore(key){
+      const [start,end] = SECTIONS.find(s=>s.key===key).range;
+      let sum = 0;
+      for(let i=start;i<=end;i++) sum += (states.get(i) ?? 0);
+      return sum; // 0..20
+    }
+
+    function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+
+    function classify(){
+      const sW = sectionScore('w');
+      const sG = sectionScore('g');
+      const sA = sectionScore('a');
+      const sM = sectionScore('m');
+      const sP = sectionScore('p');
+
+      const base = x => Math.round(x/20*70);
+
+      let A = base(sG);
+      let B = base(sP*0.6 + sW*0.4);
+      let C = base((sA*0.6 + sM*0.4));
+      let D = base((sM*0.6 + (20 - sG)*0.6));
+      let E = base((sW*0.4 + sA*0.4 + sP*0.2));
+
+      const v = id => (states.get(id) ?? 0);
+      A += 3*v(16) + 2*v(18) + 2*v(24) + 2*v(25) - 2*v(17);
+      B += 3*v(17) + 2*v(10) + 2*v(51) + 2*v(49);
+      C += 3*v(26) + 2*v(27) + 2*v(37) + 3*v(38) + 2*v(45) + 2*v(46);
+      D += 2*v(41) + 2*(2 - (states.get(16) ?? 0)) + 2*v(52) + 1*v(33);
+      E += 3*v(12) + 2*v(23) + 2*v(50) + 2*v(53) + 1*v(29) + 1*v(32);
+
+      const norm = obj => Object.fromEntries(Object.entries(obj).map(([k,val])=>[k, Math.round(clamp01(val/100)*100)]));
+      let scores = norm({A,B,C,D,E});
+      return { sW,sG,sA,sM,sP, scores };
+    }
+
+    function describeType(code){
+      switch(code){
+        case 'A': return {label:'一神教型', examples:'キリスト教・イスラム教・ユダヤ教', note:'唯一神・啓示・戒律・来世（天国/地獄）を重視'};
+        case 'B': return {label:'多神・精霊信仰型', examples:'神道・ヒンドゥー教・伝統宗教', note:'自然神聖・祭祀・聖地・共同体'};
+        case 'C': return {label:'輪廻解脱型', examples:'仏教・ジャイナ教・一部ヒンドゥー思想', note:'輪廻・苦の超克・瞑想と戒'};
+        case 'D': return {label:'非神論・哲学型', examples:'儒教・道教（哲学）・世俗人文主義', note:'超越者より徳・礼・道/理に重心'};
+        case 'E': return {label:'スピリチュアル型', examples:'ニューエイジ・個人霊性・混淆的実践', note:'波動・意識・芸術的宗教性・個人修行'};
+        default: return {label:'—', examples:'', note:''};
+      }
+    }
+
+    function renderScores(container, data){
+      container.innerHTML = '';
+      const { sW,sG,sA,sM,sP, scores } = data;
+
+      const order = Object.entries(scores).sort((a,b)=>b[1]-a[1]);
+      const [top, second] = [order[0], order[1]];
+      const topInfo = describeType(top[0]);
+      const secInfo = describeType(second[0]);
+
+      const sum = document.getElementById('summary');
+      sum.innerHTML = `
+        <div class="result-badges">
+          <span class=\"pill\"><b>第一適性</b>：${topInfo.label}（${top[1]}）</span>
+          <span class=\"pill\"><b>第二適性</b>：${secInfo.label}（${second[1]}）</span>
+        </div>
+        <p class=\"muted small\">目安：0〜39 低 / 40〜69 中 / 70〜100 高</p>
+        <div class=\"grid\">
+          <div>
+            <h3 class=\"section-title\">タイプ別スコア</h3>
+            ${order.map(([k,v])=>{
+              const info = describeType(k);
+              const wrap = document.createElement('div');
+              wrap.innerHTML = `
+                <div style=\"margin:10px 0 2px; display:flex; justify-content:space-between\"><b>${info.label}</b><span class=\"muted small\">${v}</span></div>
+                <div class=\"scorebar\"><span style=\"width:${v}%; background:${k==='A'?'#5cc8ff':k==='B'?'#8ad14a':k==='C'?'#ffc04d':k==='D'?'#f08aa3':'#c39bff'}\"></span></div>
+                <div class=\"small muted\" style=\"margin-top:4px\">例：${info.examples}｜特徴：${info.note}</div>
+              `;
+              return wrap.outerHTML;
+            }).join('')}
+          </div>
+          <div>
+            <h3 class=\"section-title\">セクション素点（各20点満点）</h3>
+            ${[
+              ['世界観・宇宙観', sW], ['神・超越者', sG], ['死後の世界・転生', sA], ['人生の意味・目的', sM], ['実践・信仰スタイル', sP]
+            ].map(([label,v])=>{
+              const wrap = document.createElement('div');
+              wrap.innerHTML = `
+                <div style=\"margin:10px 0 2px; display:flex; justify-content:space-between\"><b>${label}</b><span class=\"muted small\">${v}/20</span></div>
+                <div class=\"scorebar\"><span style=\"width:${Math.round(v/20*100)}%; background:#3aa5ff\"></span></div>
+              `;
+              return wrap.outerHTML;
+            }).join('')}
+          </div>
+        </div>
+      `;
+
+      const sugg = document.getElementById('suggest');
+      const topLabel = topInfo.label;
+      let bullets = [];
+      if(top[0]==='A') bullets = [
+        '近隣の教会／モスクで礼拝を一度体験する（説教の内容・共同体の雰囲気を確認）',
+        '創世・啓示・救済に関する入門書を1冊読む',
+        '祈りと日々の倫理実践（慈善・赦し）を1週間試す'
+      ];
+      if(top[0]==='B') bullets = [
+        '地域の神社・寺社での祭儀や年中行事に参加してみる',
+        '自然崇拝・祖霊観の本を読む（例：民俗宗教入門）',
+        '毎朝の感謝・祖先への一礼を生活習慣化する'
+      ];
+      if(top[0]==='C') bullets = [
+        '20分の静坐/瞑想を14日連続で実践して体感を記録',
+        '四苦八苦や八正道など基本教理を確認',
+        '一日一善（執着低減の実験）を継続'
+      ];
+      if(top[0]==='D') bullets = [
+        '論語・老子の抄読や、世俗倫理学の入門を一冊読む',
+        '挨拶・礼・時間厳守など共同体徳目を1週間強化',
+        '瞑想ではなく省察日記で「良き生」について書く'
+      ];
+      if(top[0]==='E') bullets = [
+        'ボディワーク/アート/音楽を伴う瞑想的実践を週2回',
+        '体験談中心ではなく批判的思考を保つ参考書を1冊',
+        '個人修行とコミュニティのバランスを意識的に探る'
+      ];
+      sugg.innerHTML = `
+        <h3 class=\"section-title\">次の一歩（${topLabel}向けの具体策）</h3>
+        <ul>${bullets.map(x=>`<li>${x}</li>`).join('')}</ul>
+      `;
+
+      document.getElementById('result').hidden = false;
+    }
+
+    // --- 送信/サンクスページ制御 ----------------------------------------
+    function showThanks(){
+      document.getElementById('siteHeader').style.display='none';
+      document.getElementById('app').style.display='none';
+      document.getElementById('siteFooter').style.display='none';
+      const t = document.getElementById('thanksView');
+      t.style.display='block';
+      const back = document.getElementById('backLink');
+      back.href = location.pathname; // クエリを除去して戻る
+    }
+
+    // 初期表示：?thanks=1 があればサンクス画面
+    (function(){
+      const params = new URLSearchParams(location.search);
+      if(params.get('thanks')==='1') showThanks();
+    })();
+
+    // --- ハンドラ ---------------------------------------------------------
+    document.getElementById('calc').addEventListener('click', ()=>{
+      const answered = Array.from(states.keys()).length;
+      if(answered < 50){
+        if(!confirm(`未回答が ${50-answered} 問あります。採点を続けますか？`)) return;
+      }
+      const data = classify();
+      renderScores(document.getElementById('scores'), data);
+      window.scrollTo({top: document.getElementById('result').offsetTop - 72, behavior:'smooth'});
+    });
+
+    document.getElementById('reset').addEventListener('click', ()=>{
+      states.clear();
+      document.querySelectorAll('select.answer').forEach(s=>{s.value=""});
+      updateProgress();
+      document.getElementById('result').hidden = true;
+    });
+
+    document.getElementById('export').addEventListener('click', ()=>{
+      const payload = {
+        nickname: document.getElementById('nickname').value || null,
+        answers: Object.fromEntries(Q.map(([id])=>[id, states.get(id) ?? null])),
+        classified: classify()
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'religion-profile.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('copy').addEventListener('click', async ()=>{
+      const lines = [];
+      lines.push(`名前/ニックネーム: ${document.getElementById('nickname').value}`);
+      for(const [id, text] of Q){
+        const v = states.get(id);
+        const label = v===2?'はい':v===1?'どちらでもない':v===0?'いいえ':'未回答';
+        lines.push(`${id - 3}. ${text} -> ${label}`);
+      }
+      const txt = lines.join('
+');
+      try{ await navigator.clipboard.writeText(txt); alert('回答をクリップボードにコピーしました'); }
+      catch(e){ alert('コピーに失敗しました'); }
+    });
+
+    // 送信ボタン：?thanks=1 へ遷移
+    document.getElementById('submitBtn').addEventListener('click', ()=>{
+      // 実送信先がないため、完了画面へ遷移
+      const base = location.origin + location.pathname;
+      location.href = base + '?thanks=1';
+    });
+  </script>
+</body>
+</html>
