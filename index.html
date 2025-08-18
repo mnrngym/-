@@ -114,6 +114,12 @@
   </footer>
 
   <script>
+    // --- 送信設定 -----------------------------------------------------------
+    const MAIL_TO = 'mnrngym@yahoo.co.jp';
+    // 後でFormspree等を使う場合はここにエンドポイントURLを入れる
+    // 例: const FORMSPREE_ENDPOINT = 'https://formspree.io/f/xxxxxxxx';
+    const FORMSPREE_ENDPOINT = '';
+
     // --- データ定義 ---------------------------------------------------------
     const SECTIONS = [
       { key:"w", title:"世界観・宇宙観", range:[4,13] },
@@ -419,17 +425,52 @@
         const label = v===2?'はい':v===1?'どちらでもない':v===0?'いいえ':'未回答';
         lines.push(`${id - 3}. ${text} -> ${label}`);
       }
-      const txt = lines.join('
-');
+      const txt = lines.join('\n');
       try{ await navigator.clipboard.writeText(txt); alert('回答をクリップボードにコピーしました'); }
       catch(e){ alert('コピーに失敗しました'); }
     });
 
     // 送信ボタン：?thanks=1 へ遷移
-    document.getElementById('submitBtn').addEventListener('click', ()=>{
-      // 実送信先がないため、完了画面へ遷移
-      const base = location.origin + location.pathname;
-      location.href = base + '?thanks=1';
+    document.getElementById('submitBtn').addEventListener('click', async ()=>{
+      const nickname = document.getElementById('nickname').value || '';
+      const answers = Object.fromEntries(Q.map(([id])=>[id-3, states.get(id) ?? null]));
+      const classified = classify();
+
+      const lines = [];
+      lines.push(`名前/ニックネーム: ${nickname}`);
+      for(const [id, text] of Q){
+        const v = states.get(id);
+        const label = v===2?'はい':v===1?'どちらでもない':v===0?'いいえ':'未回答';
+        lines.push(`${id - 3}. ${text} -> ${label}`);
+      }
+      const textBody = lines.join('
+');
+
+      if(FORMSPREE_ENDPOINT){
+        try{
+          const res = await fetch(FORMSPREE_ENDPOINT,{
+            method:'POST',
+            headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },
+            body: JSON.stringify({ nickname, mail_to: MAIL_TO, answers, classified, raw_text: textBody })
+          });
+          if(res.ok){
+            const base = location.origin + location.pathname;
+            location.href = base + '?thanks=1';
+            return;
+          }
+        }catch(e){ /* フォールバック */ }
+      }
+
+      const subject = encodeURIComponent('宗教相性診断フォーム 送信');
+      const body = encodeURIComponent(textBody + '
+
+(このメールはGitHub Pagesから送信)');
+      const mailto = `mailto:${encodeURIComponent(MAIL_TO)}?subject=${subject}&body=${body}`;
+      window.location.href = mailto;
+      setTimeout(()=>{
+        const base = location.origin + location.pathname;
+        location.href = base + '?thanks=1';
+      }, 600);
     });
   </script>
 </body>
